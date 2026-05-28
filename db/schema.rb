@@ -12,8 +12,11 @@
 
 ActiveRecord::Schema.define(version: 2021_03_08_152656) do
 
-  # These are extensions that must be enabled in order to support this database
-  enable_extension "plpgsql"
+  # Note: `enable_extension "plpgsql"` was removed because Azure Flex PostgreSQL
+  # rejects it via the `azure.extensions` allow-list. plpgsql is auto-installed
+  # in every PG database, so the call is a no-op on all supported environments.
+  # `config/initializers/skip_plpgsql_enable_extension.rb` is the safety net if
+  # a future `db:schema:dump` regenerates the line. See SRE-3139.
 
   create_table "clients", id: :string, force: :cascade do |t|
   end
