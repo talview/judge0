@@ -1,4 +1,4 @@
-FROM judge0/compilers:1.4.0 AS production
+FROM talview.azurecr.io/judge0-compilers:bookworm-20260528-2285831 AS production
 
 ENV JUDGE0_HOMEPAGE "https://judge0.com"
 LABEL homepage=$JUDGE0_HOMEPAGE
