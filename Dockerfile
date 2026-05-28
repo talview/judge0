@@ -1,4 +1,4 @@
-FROM talview.azurecr.io/judge0-compilers:bookworm-20260528-2285831 AS production
+FROM talview.azurecr.io/judge0-compilers:bookworm-20260528-2285831 AS base
 
 ENV JUDGE0_HOMEPAGE "https://judge0.com"
 LABEL homepage=$JUDGE0_HOMEPAGE
@@ -75,6 +75,17 @@ ENV JUDGE0_VERSION "1.13.1"
 LABEL version=$JUDGE0_VERSION
 
 
-FROM production AS development
+# Development stage: identical to base except CMD overridden to sleep so the
+# container stays up while devs `docker exec` into it. Referenced by
+# docker-compose.dev.yml via `target: development`.
+FROM base AS development
 
+USER root
 CMD ["sleep", "infinity"]
+
+
+# Production stage is declared LAST so `docker build .` (no --target) picks it
+# up by default. Without this, the previous layout had `development` last and
+# `docker build .` produced an image that ran `sleep infinity` instead of
+# Rails. See SRE-3138.
+FROM base AS production
