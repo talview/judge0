@@ -141,10 +141,10 @@
   },
   {
     id: 61,
-    name: "Haskell (GHC 9.6.6)",
+    name: "Haskell (GHC 9.10.1)",
     is_archived: false,
     source_file: "main.hs",
-    compile_cmd: "/usr/local/ghc-9.6.6/bin/ghc %s main.hs",
+    compile_cmd: "/usr/local/ghc-9.10.1/bin/ghc %s main.hs",
     run_cmd: "./main"
   },
   {
@@ -205,7 +205,7 @@
     name: "Prolog (GNU Prolog 1.5.0)",
     is_archived: false,
     source_file: "main.pro",
-    compile_cmd: "PATH=\"/usr/local/gprolog-1.5.0/bin:$PATH\" /usr/local/gprolog-1.5.0/bin/gplc --no-top-level %s main.pro",
+    compile_cmd: "PATH=\"/usr/local/gprolog-1.5.0/bin:$PATH\" /usr/local/gprolog-1.5.0/gprolog-1.5.0/bin/gplc --no-top-level %s main.pro",
     run_cmd: "./main"
   },
   {
@@ -242,7 +242,7 @@
     name: "TypeScript (5.4.5)",
     is_archived: false,
     source_file: "script.ts",
-    compile_cmd: "/usr/bin/tsc %s script.ts",
+    compile_cmd: "/usr/local/node-22.15.0/bin/tsc %s script.ts",
     run_cmd: "/usr/local/node-22.15.0/bin/node script.js"
   },
   {
