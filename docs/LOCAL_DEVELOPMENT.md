@@ -167,8 +167,12 @@ Secret alone won't propagate — `kubectl rollout restart` after ESO sync.
 
 ## Smoke-test after deploy
 
+Pull the `X-Auth-Token` live from KeyVault / the running Secret — never
+commit or hard-code it:
+
 ```bash
-TOKEN=Gg8Uu2M0bG770WLb   # X-Auth-Token; fetch from KV/ESO if rotated
+TOKEN=$(kubectl --context tv-prod-platform-01 -n platform get secret p119-judge0-bookworm \
+  -o jsonpath='{.data.AUTHN_TOKEN}' | base64 -d)
 
 # 1. Language list
 curl -sH "X-Auth-Token: $TOKEN" https://compiler.talview.com/languages | jq 'length'
