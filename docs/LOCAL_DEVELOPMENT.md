@@ -19,6 +19,8 @@ that branch unless stated otherwise.
 | `config/initializers/skip_plpgsql_enable_extension.rb` | Suppresses `enable_extension "plpgsql"` so `db:schema:load` works on Azure Flex PostgreSQL, which enforces an `azure.extensions` allow-list. (SRE-3139) |
 | `db/schema.rb` | `enable_extension "plpgsql"` removed (belt-and-braces; the initializer above is the safety net if a future `db:schema:dump` regenerates it). |
 | `db/languages/active.rb` | `compile_cmd` / `run_cmd` paths repointed to the new `/usr/local/<lang>-<version>/` directories baked by the bookworm compilers image. |
+| `docker-entrypoint.sh` | cgroupv2 delegation setup at container start: creates `/sys/fs/cgroup/init` + `/sys/fs/cgroup/isolate`, propagates controllers via `cgroup.subtree_control`, and pre-creates `/run/isolate/locks`. Required by isolate v2.6. (SRE-3142) |
+| `app/jobs/isolate_job.rb` | Drops `--cg-timing` / `--no-cg-timing` flags (removed in isolate v2); adds `-n 512` open-file cap for the sandbox; falls back to `metadata[:max-rss]` when `metadata[:cg-mem]` is missing — isolate v2 reads `memory.peak` (kernel 5.19+) which is absent on AKS kernel 5.15, so cg-mem silently goes nil. (SRE-3142 + SRE-3160) |
 | `docs/LOCAL_DEVELOPMENT.md` | This file. |
 
 ---
@@ -191,6 +193,65 @@ For a fuller suite (14 hello-worlds across the language matrix), see
 
 ---
 
+## cgroupv2 migration (SRE-3142 + SRE-3160)
+
+`compiler.talview.com` now runs on the **standard platform nodepool** (cgroupv2,
+AKS Ubuntu 22.04, kernel 5.15). The dedicated `cgroupv1-judge0` nodepool is
+no longer required.
+
+### What changed in the consumer image
+
+1. **Compilers base bumped** to an isolate-v2.6 image
+   (`talview.azurecr.io/judge0-compilers:bookworm-20260529-overlay-v2-3dcc6d3`).
+   Upstream `judge0/isolate@ad39cc4` is cgroupv1-only; `ioi/isolate v2.6` is
+   cgroupv2-only since v2.0.
+2. **`docker-entrypoint.sh`** sets up cgroupv2 delegation before `cron` and
+   the Rails server start:
+   - Creates `/sys/fs/cgroup/init`, moves PID 1 into it, then enables
+     `cpu memory pids io cpuset` controllers via `cgroup.subtree_control`.
+   - Creates `/sys/fs/cgroup/isolate` and enables the same controllers there
+     (isolate's `cg_root`).
+   - Creates `/run/isolate/locks` (where isolate v2 takes its sandbox locks).
+3. **`app/jobs/isolate_job.rb`** drops the v1-only `--cg-timing` /
+   `--no-cg-timing` flags (isolate v2 always reads cg timing) and adds
+   `-n 512` to widen the open-file cap (some Go/Java toolchains exceed v2's
+   stricter default).
+4. **Memory metric fallback** (SRE-3160): isolate v2 reads cgroupv2's
+   `memory.peak`, which requires kernel ≥ 5.19. AKS Ubuntu 22.04 ships
+   kernel 5.15, so `cg-mem` silently disappears from the metadata.
+   `isolate_job.rb` now uses `metadata[:cg-mem] || metadata[:max-rss]` so
+   `submission.memory` stays populated (max-rss comes from `getrusage`,
+   always emitted). Once nodes move to a 5.19+ kernel `cg-mem` will come
+   back automatically.
+
+### Pod requirements
+
+The container needs `privileged: true` (still — for the cgroup mount +
+delegation setup the entrypoint performs). It does **not** need any
+`nodeSelector` / tolerations for the old `cgroupv1-judge0` pool.
+
+In `global-helm` 4.0.7, `securityContext.config.privileged: true` is only
+honored when `securityContext.enabled: true` — bare `privileged: true` is a
+silent no-op. The defaults also drop ALL caps and run as uid 10001, both
+incompatible with the judge0 image (USER `judge0` = uid 1000; isolate needs
+caps). Override every default explicitly. See
+`prod-cluster/helm-charts/platform/p119-judge0-bookworm.yaml`.
+
+### Overlay vs full rebuild
+
+The current bookworm compilers tag (`overlay-v2-3dcc6d3`) is a thin overlay
+on `bookworm-20260528-2285831` that rebuilds **only** the isolate layer. A
+full clean rebuild is blocked on JDK 21.0.5 URL 404s
+([SRE-3161](https://linear.app/talview/issue/SRE-3161)) — when that lands,
+the next compilers tag drops the overlay.
+
+The overlay also pins `num_boxes = 2147483647` in `/usr/local/etc/isolate`.
+Judge0 computes `box_id = submission.id % 2147483647`; with v1's default
+config `num_boxes = 1000` the sandbox-id range check fails silently on any
+submission whose `id > 1000`, returning Internal Error.
+
+---
+
 ## Linked Linear tickets
 
 | Ticket | Subject |
@@ -200,3 +261,7 @@ For a fuller suite (14 hello-worlds across the language matrix), see
 | [SRE-3130–3137](https://linear.app/talview/project/judge0-compiler-upgrade-compilertalviewcom-4887b349ceb8) | completed compiler-upgrade work items |
 | [SRE-3138](https://linear.app/talview/issue/SRE-3138) | Dockerfile dev-stage footgun — fixed by this doc's PR |
 | [SRE-3139](https://linear.app/talview/issue/SRE-3139) | schema.rb plpgsql strip — fixed by sibling PR |
+| [SRE-3142](https://linear.app/talview/issue/SRE-3142) | isolate v2.6 + cgroupv2 migration — done, deployed to p119 |
+| [SRE-3160](https://linear.app/talview/issue/SRE-3160) | `memory: 0` regression — cg-mem→max-rss fallback for kernel 5.15 |
+| [SRE-3161](https://linear.app/talview/issue/SRE-3161) | JDK 21.0.5 URL 404 — blocks clean compilers rebuild; overlay is the workaround |
+| [SRE-3162](https://linear.app/talview/issue/SRE-3162) | mirror p119 changes back into p075-judge0 once stable |
