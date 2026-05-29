@@ -244,7 +244,13 @@ class IsolateJob < ApplicationJob
 
     submission.time = metadata[:time]
     submission.wall_time = metadata[:"time-wall"]
-    submission.memory = (cgroups.present? ? metadata[:"cg-mem"] : metadata[:"max-rss"])
+    # isolate v2 reads cgroupv2's memory.peak (kernel >= 5.19). On AKS
+    # nodes running kernel 5.15, that file is absent and isolate silently
+    # skips the cg-mem metadata line, so submission.memory came back nil
+    # for every submission on cgroupv2 (SRE-3160). Fall back to max-rss
+    # (from getrusage, always emitted) when cg-mem is unavailable so MLE
+    # detection keeps working on older kernels.
+    submission.memory = (cgroups.present? ? (metadata[:"cg-mem"] || metadata[:"max-rss"]) : metadata[:"max-rss"])
     submission.stdout = program_stdout
     submission.stderr = program_stderr
     submission.exit_code = metadata[:exitcode].try(:to_i) || 0
