@@ -1,4 +1,4 @@
-FROM talview.azurecr.io/judge0-compilers:bookworm-20260529-overlay-3dcc6d3 AS base
+FROM talview.azurecr.io/judge0-compilers:bookworm-20260529-overlay-v2-3dcc6d3 AS base
 
 ENV JUDGE0_HOMEPAGE "https://judge0.com"
 LABEL homepage=$JUDGE0_HOMEPAGE
